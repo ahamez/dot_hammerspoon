@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/sumneko/vscode-lua/master/setting/schema.json",
+
+  "runtime": {
+    "version": "Lua 5.4",
+    "path": [
+      "?.lua",
+      "?/init.lua",
+      "/Applications/Hammerspoon.app/Contents/Resources/extensions/?.lua",
+      "/Applications/Hammerspoon.app/Contents/Resources/extensions/?/init.lua"
+    ]
+  },
+
+  "workspace": {
+    "library": ["/Applications/Hammerspoon.app/Contents/Resources/extensions"],
+    "checkThirdParty": false
+  },
+
+  "diagnostics": {
+    "globals": ["hs"],
+    "disable": []
+  },
+
+  "completion": {
+    "callSnippet": "Replace"
+  },
+
+  "hint": {
+    "enable": true
+  }
+}
