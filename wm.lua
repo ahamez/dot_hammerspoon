@@ -138,11 +138,44 @@ end
 
 local function hint()
 	hideHint()
-	local msg = hs.styledtext.new("f c v b n\nw ⟸⟹  s ⟹⟸\nu ⇑⇓  i ⇓⇑\n← → ↑ ↓\n␛", {
+	local header = ""
+	local fw = hs.window.focusedWindow()
+	if fw then
+		local app = fw:application()
+		local appName = app and app:name() or ""
+		local winTitle = fw:title() or ""
+		if appName ~= "" and winTitle ~= "" then
+			header = appName .. " (" .. winTitle .. ")"
+		else
+			header = appName ~= "" and appName or winTitle
+		end
+	end
+
+	local bodyLines = {
+		"f c v b n",
+		"r/t:⬌ y/u:⬍",
+		"← → ↑ ↓",
+		"␛",
+	}
+
+	local body = hs.styledtext.new(table.concat(bodyLines, "\n"), {
 		paragraphStyle = { alignment = "center" },
-		font = { name = "Menlo", size = 48 },
+		font = { name = "Menlo", size = 40 },
 		color = { red = 1, green = 1, blue = 1, alpha = 1 },
 	})
+
+	local msg
+	if header ~= "" then
+		local titleStyled = hs.styledtext.new(header, {
+			paragraphStyle = { alignment = "center" },
+			font = { name = "Menlo", size = 14 },
+			color = { red = 1, green = 1, blue = 1, alpha = 1 },
+		})
+		msg = titleStyled .. hs.styledtext.new("\n\n") .. body
+	else
+		msg = body
+	end
+
 	wm._hintAlert = hs.alert.show(msg, 9999)
 end
 
@@ -211,8 +244,8 @@ function wm.start()
 		place(w, bottomHalfRect(usableFrame(w:screen())))
 	end)
 
-	-- width adjustments: w = +5%, s = -5% (remain in modal)
-	modal:bind({}, "w", function()
+	-- width adjustments: r = +5%, t = -5% (remain in modal)
+	modal:bind({}, "r", function()
 		local win = hs.window.focusedWindow()
 		if not win then
 			return
@@ -221,7 +254,7 @@ function wm.start()
 		adjustWidth(win, step)
 	end)
 
-	modal:bind({}, "s", function()
+	modal:bind({}, "t", function()
 		local win = hs.window.focusedWindow()
 		if not win then
 			return
@@ -230,8 +263,8 @@ function wm.start()
 		adjustWidth(win, -step)
 	end)
 
-	-- height adjustments: u = +5%, i = -5% (remain in modal)
-	modal:bind({}, "u", function()
+	-- height adjustments: y = +5%, u = -5% (remain in modal)
+	modal:bind({}, "y", function()
 		local win = hs.window.focusedWindow()
 		if not win then
 			return
@@ -240,7 +273,7 @@ function wm.start()
 		adjustHeight(win, step)
 	end)
 
-	modal:bind({}, "i", function()
+	modal:bind({}, "u", function()
 		local win = hs.window.focusedWindow()
 		if not win then
 			return
