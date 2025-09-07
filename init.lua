@@ -27,12 +27,12 @@ end)
 
 -- Auto-reload when Lua files or zk_config.json change
 local function reloadConfig(files)
-    local doReload = false
-    for _, file in pairs(files) do
-        if file:sub(-4) == ".lua" or file:match("zk_config%.json$") then
-            doReload = true
-        end
-    end
+	local doReload = false
+	for _, file in pairs(files) do
+		if file:sub(-4) == ".lua" or file:match("zk_config%.json$") then
+			doReload = true
+		end
+	end
 	if doReload then
 		hs.reload()
 	end

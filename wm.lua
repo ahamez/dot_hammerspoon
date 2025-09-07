@@ -89,6 +89,46 @@ local function place(win, rect)
 	end
 end
 
+-- Resize width by a pixel delta, keeping center X fixed and clamping to the usable screen frame
+local function adjustWidth(win, delta)
+	if not win or delta == 0 then
+		return
+	end
+	local screenF = usableFrame(win:screen())
+	local f = win:frame()
+	local newW = math.max(1, f.w + delta)
+	local cx = f.x + f.w / 2
+	local newX = cx - newW / 2
+	-- clamp horizontally to stay within the screen frame
+	if newX < screenF.x then
+		newX = screenF.x
+	end
+	if newX + newW > screenF.x + screenF.w then
+		newX = (screenF.x + screenF.w) - newW
+	end
+	win:setFrame(hs.geometry.rect(newX, f.y, newW, f.h), 0)
+end
+
+-- Resize height by a pixel delta, keeping center Y fixed and clamping to the usable screen frame
+local function adjustHeight(win, delta)
+	if not win or delta == 0 then
+		return
+	end
+	local screenF = usableFrame(win:screen())
+	local f = win:frame()
+	local newH = math.max(1, f.h + delta)
+	local cy = f.y + f.h / 2
+	local newY = cy - newH / 2
+	-- clamp vertically to stay within the screen frame
+	if newY < screenF.y then
+		newY = screenF.y
+	end
+	if newY + newH > screenF.y + screenF.h then
+		newY = (screenF.y + screenF.h) - newH
+	end
+	win:setFrame(hs.geometry.rect(f.x, newY, f.w, newH), 0)
+end
+
 local function hideHint()
 	if wm._hintAlert then
 		hs.alert.closeSpecific(wm._hintAlert)
@@ -98,7 +138,7 @@ end
 
 local function hint()
 	hideHint()
-	local msg = hs.styledtext.new("f c v b n\n← → ↑ ↓\n␛", {
+	local msg = hs.styledtext.new("f c v b n\nw ⟸⟹  s ⟹⟸\nu ⇑⇓  i ⇓⇑\n← → ↑ ↓\n␛", {
 		paragraphStyle = { alignment = "center" },
 		font = { name = "Menlo", size = 48 },
 		color = { red = 1, green = 1, blue = 1, alpha = 1 },
@@ -169,6 +209,44 @@ function wm.start()
 			return
 		end
 		place(w, bottomHalfRect(usableFrame(w:screen())))
+	end)
+
+	-- width adjustments: w = +5%, s = -5% (remain in modal)
+	modal:bind({}, "w", function()
+		local win = hs.window.focusedWindow()
+		if not win then
+			return
+		end
+		local step = usableFrame(win:screen()).w * 0.05
+		adjustWidth(win, step)
+	end)
+
+	modal:bind({}, "s", function()
+		local win = hs.window.focusedWindow()
+		if not win then
+			return
+		end
+		local step = usableFrame(win:screen()).w * 0.05
+		adjustWidth(win, -step)
+	end)
+
+	-- height adjustments: u = +5%, i = -5% (remain in modal)
+	modal:bind({}, "u", function()
+		local win = hs.window.focusedWindow()
+		if not win then
+			return
+		end
+		local step = usableFrame(win:screen()).h * 0.05
+		adjustHeight(win, step)
+	end)
+
+	modal:bind({}, "i", function()
+		local win = hs.window.focusedWindow()
+		if not win then
+			return
+		end
+		local step = usableFrame(win:screen()).h * 0.05
+		adjustHeight(win, -step)
 	end)
 
 	wm.modal = modal
