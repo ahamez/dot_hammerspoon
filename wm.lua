@@ -10,8 +10,9 @@ local GAP = 10 -- desired TOTAL spacing between neighbors and edges
 local PRESETS = {
 	f = { x = 0.0, y = 0.0, w = 1.0, h = 1.0 }, -- almost-full (inset by GAP)
 	c = { x = 0.25, y = 17 / 80, w = 0.50, h = 23 / 40 }, -- centered compact taller
-	b = { x = 1 / 6, y = 1 / 15, w = 2 / 3, h = 13 / 15 }, -- centered medium
-	v = { x = 1 / 6, y = 0.0, w = 2 / 3, h = 1.0 }, -- centered tall full-height
+	n = { x = 1 / 5, y = 31 / 200, w = 3 / 5, h = 69 / 100 }, -- centered like c, but 20% larger
+	b = { x = 1 / 5, y = 53 / 600, w = 3 / 5, h = 247 / 300 }, -- centered medium (10% narrower, 5% shorter)
+	v = { x = 1 / 5, y = 0.0, w = 3 / 5, h = 1.0 }, -- centered tall full-height (match b width)
 }
 
 -- Helpers
@@ -97,7 +98,7 @@ end
 
 local function hint()
 	hideHint()
-	local msg = hs.styledtext.new("c b f v\nh← l→ k↑ j↓\n␛", {
+	local msg = hs.styledtext.new("f c v b n\n← → ↑ ↓\n␛", {
 		paragraphStyle = { alignment = "center" },
 		font = { name = "Menlo", size = 48 },
 		color = { red = 1, green = 1, blue = 1, alpha = 1 },
@@ -138,7 +139,7 @@ function wm.start()
 	end
 
 	-- exact-10px total gaps for 2-way tiling
-	modal:bind({}, "h", function()
+	modal:bind({}, "left", function()
 		local w = hs.window.focusedWindow()
 		if not w then
 			return
@@ -146,7 +147,7 @@ function wm.start()
 		place(w, leftHalfRect(usableFrame(w:screen())))
 	end)
 
-	modal:bind({}, "l", function()
+	modal:bind({}, "right", function()
 		local w = hs.window.focusedWindow()
 		if not w then
 			return
@@ -154,7 +155,7 @@ function wm.start()
 		place(w, rightHalfRect(usableFrame(w:screen())))
 	end)
 
-	modal:bind({}, "k", function()
+	modal:bind({}, "up", function()
 		local w = hs.window.focusedWindow()
 		if not w then
 			return
@@ -162,7 +163,7 @@ function wm.start()
 		place(w, topHalfRect(usableFrame(w:screen())))
 	end)
 
-	modal:bind({}, "j", function()
+	modal:bind({}, "down", function()
 		local w = hs.window.focusedWindow()
 		if not w then
 			return
