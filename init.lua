@@ -45,10 +45,20 @@ zk.notifyInfo("Hammerspoon", "Config reloaded")
 local wm = require("wm")
 wm.start()
 
+-- OmniFocus helpers
+local of = require("of")
+-- URL: trigger OmniFocus capture via hammerspoon://of-capture
+hs.urlevent.bind("of-capture", function()
+	of.captureSelection()
+end)
+
 -- Global center hotkey (no modal)
 hs.hotkey.bind({ "cmd", "alt", "ctrl" }, "c", function()
 	wm.centerCompact()
 end)
+
+-- Global: capture selection to OmniFocus inbox
+hs.hotkey.bind({ "cmd", "alt", "ctrl" }, "t", of.captureSelection)
 
 -- Global: move focused window to left screen
 hs.hotkey.bind({ "cmd", "alt", "ctrl" }, "left", function()
