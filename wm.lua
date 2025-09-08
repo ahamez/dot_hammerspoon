@@ -154,6 +154,7 @@ local function hint()
 	local bodyLines = {
 		"f c v b n",
 		"r/t:⬌ y/u:⬍",
+		"z:⬈ e:⬋",
 		"← → ↑ ↓",
 		"␛",
 	}
@@ -280,6 +281,31 @@ function wm.start()
 		end
 		local step = usableFrame(win:screen()).h * 0.05
 		adjustHeight(win, -step)
+	end)
+
+	-- uniform grow/shrink in both dimensions: z = +5% ⬈, e = -5% ⬋ (remain in modal)
+	modal:bind({}, "z", function()
+		local win = hs.window.focusedWindow()
+		if not win then
+			return
+		end
+		local f = usableFrame(win:screen())
+		local stepW = f.w * 0.05
+		local stepH = f.h * 0.05
+		adjustWidth(win, stepW)
+		adjustHeight(win, stepH)
+	end)
+
+	modal:bind({}, "e", function()
+		local win = hs.window.focusedWindow()
+		if not win then
+			return
+		end
+		local f = usableFrame(win:screen())
+		local stepW = f.w * 0.05
+		local stepH = f.h * 0.05
+		adjustWidth(win, -stepW)
+		adjustHeight(win, -stepH)
 	end)
 
 	wm.modal = modal
