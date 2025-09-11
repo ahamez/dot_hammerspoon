@@ -21,20 +21,6 @@ local function applescript(script)
 	return ok, result, err
 end
 
-local function ellipsize(s, max)
-	s = s or ""
-	if #s <= max then
-		return s
-	end
-	return s:sub(1, math.max(0, max - 1)) .. "…"
-end
-
-local function firstLine(s)
-	s = s or ""
-	local line = s:match("([^\r\n]*)") or ""
-	return line
-end
-
 local function createOmniFocusTask(title, note, projectName)
     local titleEsc = encodeAppleScriptString(title)
     local noteEsc = encodeAppleScriptString(note)
@@ -74,31 +60,6 @@ end tell]], titleEsc, noteEsc)
     hs.alert.show("Captured to OmniFocus")
 end
 
-local function getOmniFocusProjectNames()
-    local script = [[tell application "OmniFocus"
-    tell default document
-        try
-            set nameList to name of flattened projects
-            return nameList
-        on error
-            return {}
-        end try
-    end tell
-end tell]]
-    local ok, result = applescript(script)
-    if not ok then return {} end
-    local t = {}
-    if type(result) == "table" then
-        t = result
-    elseif type(result) == "string" and result ~= "" then
-        t = { result }
-    end
-    table.sort(t, function(a,b)
-        return tostring(a):lower() < tostring(b):lower()
-    end)
-    return t
-end
-
 -- Minimal inline prompt without chooser hotkey hints
 local function htmlEscape(s)
 	s = s or ""
@@ -106,7 +67,7 @@ local function htmlEscape(s)
 	return s
 end
 
-local function showCapturePrompt(defaultTitle, defaultBody, projectNames, defaultProject, onSubmit, onCancel)
+local function showCapturePrompt(defaultTitle, defaultBody, onSubmit, onCancel)
     local screen = hs.screen.mainScreen():frame()
     local width, height = 720, 520
 	local rect = {
@@ -117,93 +78,18 @@ local function showCapturePrompt(defaultTitle, defaultBody, projectNames, defaul
 	}
 
 	local uc = hs.webview.usercontent.new("ofPrompt")
-	uc:setCallback(function(msg)
-		if not msg or not msg.body then
-			return
-		end
-		local event = msg.body.event
-		if event == "submit" then
-			local title = trim((msg.body.title or ""))
-			local body = msg.body.body or ""
-			local project = msg.body.project or "Inbox"
-			if title ~= "" then
-				onSubmit(title, body, project)
-			end
-		elseif event == "cancel" then
-			if onCancel then
-				onCancel()
-			end
-		end
-	end)
 
-    -- Build project options HTML
-    local opts = {}
-    local def = defaultProject or "Inbox"
-    local function addOption(name)
-        local selected = (name == def) and " selected" or ""
-        table.insert(opts, string.format('<option value="%s"%s>%s</option>', htmlEscape(name), selected, htmlEscape(name)))
+    -- Load HTML template from file and substitute placeholders
+    local templatePath = (hs and hs.configdir or (os.getenv("HOME") .. "/.hammerspoon")) .. "/of_prompt.html"
+    local fh = io.open(templatePath, "r")
+    local html = nil
+    if fh then
+        html = fh:read("*a")
+        fh:close()
+    else
+        hs.alert.show("Missing of_prompt.html; cannot show capture UI")
+        return
     end
-    addOption("Inbox")
-    if type(projectNames) == "table" then
-        for _, n in ipairs(projectNames) do
-            if n and n ~= "" then addOption(tostring(n)) end
-        end
-    end
-    local optionsHTML = table.concat(opts, "")
-
-    local html = [[
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-  html,body{margin:0;padding:0;background:#ededed;color:#111;font:16px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;}
-  .wrap{display:flex;flex-direction:column;gap:10px;padding:12px 16px;height:100%%;box-sizing:border-box;}
-  .row{display:flex;align-items:center;}
-  .label{font-size:12px;color:#5f6368;margin-bottom:4px;}
-  .title{flex:1;border:none;outline:none;background:#fff;border-radius:8px;padding:10px 12px;font-size:20px;font-weight:600;box-shadow: inset 0 0 0 1px #d0d0d0;}
-  .title::placeholder{color:#9aa0a6;font-weight:500;}
-  .project{flex:1;border:none;outline:none;background:#fff;border-radius:8px;padding:9px 12px;font-size:14px;box-shadow: inset 0 0 0 1px #d0d0d0;}
-  .body{flex:1;min-height:360px;border:none;outline:none;background:#fff;border-radius:8px;padding:10px 12px;font-size:14px;line-height:1.4;box-shadow: inset 0 0 0 1px #d0d0d0;resize:vertical;}
-  .hint{font-size:11px;color:#80868b;}
-</style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="row" style="flex-direction:column;align-items:stretch;">
-      <div class="label">Title</div>
-      <input id="title" class="title" type="text" spellcheck="false" autocomplete="off" placeholder="Enter task title" value="%s"/>
-    </div>
-    <div class="row" style="gap:10px;">
-      <div style="display:flex;flex-direction:column;flex:1;">
-        <div class="label">Project</div>
-        <select id="project" class="project">%s</select>
-      </div>
-    </div>
-    <div class="row" style="flex-direction:column;align-items:stretch;flex:1;">
-      <div class="label">Selection</div>
-      <textarea id="body" class="body" spellcheck="false">%s</textarea>
-      <div class="hint">Enter to submit (when in Title). Cmd+Enter always submits. Esc cancels.</div>
-    </div>
-  </div>
-  <script>
-    const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ofPrompt;
-    function send(event, payload){ if(handler){ handler.postMessage(Object.assign({event}, payload||{})); } }
-    const input = document.getElementById('title');
-    const body = document.getElementById('body');
-    const project = document.getElementById('project');
-    setTimeout(()=>{ input.focus(); input.select(); }, 0);
-    document.addEventListener('keydown', (e)=>{
-      if((e.metaKey || e.ctrlKey) && e.key === 'Enter'){
-        send('submit', { title: input.value, body: body.value, project: project.value });
-      } else if(e.key === 'Enter' && document.activeElement === input){
-        send('submit', { title: input.value, body: body.value, project: project.value });
-      }
-      if(e.key === 'Escape'){ send('cancel', {}); }
-    });
-  </script>
-</body>
-</html>]]
 
     local w = hs.webview
         .new(rect, { developerExtrasEnabled = false }, uc)
@@ -211,7 +97,10 @@ local function showCapturePrompt(defaultTitle, defaultBody, projectNames, defaul
 		:level(hs.drawing.windowLevels.modalPanel)
 		:windowStyle({ "utility" })
 		:allowTextEntry(true)
-        :html(string.format(html, htmlEscape(defaultTitle or ""), optionsHTML, htmlEscape(defaultBody or "")))
+        :html((html
+            :gsub("{{TITLE}}", function() return htmlEscape(defaultTitle or "") end)
+            :gsub("{{BODY}}", function() return htmlEscape(defaultBody or "") end)
+        ))
 
 	w:show()
 	w:bringToFront(true)
@@ -238,9 +127,9 @@ local function showCapturePrompt(defaultTitle, defaultBody, projectNames, defaul
 		w:delete()
 	end
 	-- wrap submit/cancel to close the prompt
-    local function submit(title, body, project)
+    local function submit(title, body)
         close()
-        onSubmit(title, body, project)
+        onSubmit(title, body)
     end
 	local function cancel()
 		close()
@@ -258,9 +147,8 @@ local function showCapturePrompt(defaultTitle, defaultBody, projectNames, defaul
         if event == "submit" then
             local title = trim((msg.body.title or ""))
             local body = msg.body.body or ""
-            local project = msg.body.project or "Inbox"
             if title ~= "" then
-                submit(title, body, project)
+                submit(title, body)
             else
                 cancel()
             end
@@ -414,11 +302,9 @@ function of.captureSelection()
 		initialNote = noteHeader .. "\n\n" .. selection
 	end
 
-    -- Fetch project names and show prompt with project selector
-    local projects = getOmniFocusProjectNames()
     -- Prompt with title + editable note content; save exactly what user sees
-    showCapturePrompt("", initialNote, projects, "Inbox", function(title, edited, project)
-        createOmniFocusTask(title, edited or "", project)
+    showCapturePrompt("", initialNote, function(title, edited)
+        createOmniFocusTask(title, edited or "")
     end, function() end)
 end
 
