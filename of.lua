@@ -35,26 +35,68 @@ local function firstLine(s)
 	return line
 end
 
-local function createOmniFocusTask(title, note)
-	local script = string.format(
-		[[set theTaskName to "%s"
+local function createOmniFocusTask(title, note, projectName)
+    local titleEsc = encodeAppleScriptString(title)
+    local noteEsc = encodeAppleScriptString(note)
+    local script
+    if projectName and projectName ~= "" and projectName ~= "Inbox" then
+        local projEsc = encodeAppleScriptString(projectName)
+        script = string.format([[set theTaskName to "%s"
+set theNote to "%s"
+set theProjectName to "%s"
+tell application "OmniFocus"
+    tell default document
+        set theTask to missing value
+        try
+            set theProj to first flattened project whose name is theProjectName
+            set theTask to make new task with properties {name:theTaskName, note:theNote} at end of tasks of theProj
+        on error
+            set theTask to make new inbox task with properties {name:theTaskName, note:theNote}
+        end try
+    end tell
+end tell]], titleEsc, noteEsc, projEsc)
+    else
+        script = string.format([[set theTaskName to "%s"
 set theNote to "%s"
 tell application "OmniFocus"
-	tell default document
-		make new inbox task with properties {name:theTaskName, note:theNote}
-	end tell
-end tell]],
-		encodeAppleScriptString(title),
-		encodeAppleScriptString(note)
-	)
+    tell default document
+        make new inbox task with properties {name:theTaskName, note:theNote}
+    end tell
+end tell]], titleEsc, noteEsc)
+    end
 
-	local ok, _, err = hs.osascript.applescript(script)
-	if not ok then
-		hs.alert.show("Failed to add to OmniFocus: " .. tostring(err))
-		return
-	end
+    local ok, _, err = hs.osascript.applescript(script)
+    if not ok then
+        hs.alert.show("Failed to add to OmniFocus: " .. tostring(err))
+        return
+    end
 
-	hs.alert.show("Captured to OmniFocus")
+    hs.alert.show("Captured to OmniFocus")
+end
+
+local function getOmniFocusProjectNames()
+    local script = [[tell application "OmniFocus"
+    tell default document
+        try
+            set nameList to name of flattened projects
+            return nameList
+        on error
+            return {}
+        end try
+    end tell
+end tell]]
+    local ok, result = applescript(script)
+    if not ok then return {} end
+    local t = {}
+    if type(result) == "table" then
+        t = result
+    elseif type(result) == "string" and result ~= "" then
+        t = { result }
+    end
+    table.sort(t, function(a,b)
+        return tostring(a):lower() < tostring(b):lower()
+    end)
+    return t
 end
 
 -- Minimal inline prompt without chooser hotkey hints
@@ -64,12 +106,12 @@ local function htmlEscape(s)
 	return s
 end
 
-local function showTitlePrompt(defaultTitle, onSubmit, onCancel)
-	local screen = hs.screen.mainScreen():frame()
-	local width, height = 680, 72
+local function showCapturePrompt(defaultTitle, defaultBody, projectNames, defaultProject, onSubmit, onCancel)
+    local screen = hs.screen.mainScreen():frame()
+    local width, height = 720, 520
 	local rect = {
 		x = screen.x + (screen.w - width) / 2,
-		y = screen.y + (screen.h - height) / 3,
+		y = screen.y + (screen.h - height) / 4,
 		w = width,
 		h = height,
 	}
@@ -82,8 +124,10 @@ local function showTitlePrompt(defaultTitle, onSubmit, onCancel)
 		local event = msg.body.event
 		if event == "submit" then
 			local title = trim((msg.body.title or ""))
+			local body = msg.body.body or ""
+			local project = msg.body.project or "Inbox"
 			if title ~= "" then
-				onSubmit(title)
+				onSubmit(title, body, project)
 			end
 		elseif event == "cancel" then
 			if onCancel then
@@ -92,45 +136,82 @@ local function showTitlePrompt(defaultTitle, onSubmit, onCancel)
 		end
 	end)
 
-	local html = [[
+    -- Build project options HTML
+    local opts = {}
+    local def = defaultProject or "Inbox"
+    local function addOption(name)
+        local selected = (name == def) and " selected" or ""
+        table.insert(opts, string.format('<option value="%s"%s>%s</option>', htmlEscape(name), selected, htmlEscape(name)))
+    end
+    addOption("Inbox")
+    if type(projectNames) == "table" then
+        for _, n in ipairs(projectNames) do
+            if n and n ~= "" then addOption(tostring(n)) end
+        end
+    end
+    local optionsHTML = table.concat(opts, "")
+
+    local html = [[
 <!doctype html>
 <html>
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   html,body{margin:0;padding:0;background:#ededed;color:#111;font:16px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;}
-  .wrap{display:flex;flex-direction:column;gap:8px;padding:12px 16px;}
+  .wrap{display:flex;flex-direction:column;gap:10px;padding:12px 16px;height:100%%;box-sizing:border-box;}
   .row{display:flex;align-items:center;}
-  .title{flex:1;border:none;outline:none;background:#fff;border-radius:8px;padding:10px 12px;font-size:22px;font-weight:600;box-shadow: inset 0 0 0 1px #d0d0d0;}
+  .label{font-size:12px;color:#5f6368;margin-bottom:4px;}
+  .title{flex:1;border:none;outline:none;background:#fff;border-radius:8px;padding:10px 12px;font-size:20px;font-weight:600;box-shadow: inset 0 0 0 1px #d0d0d0;}
   .title::placeholder{color:#9aa0a6;font-weight:500;}
+  .project{flex:1;border:none;outline:none;background:#fff;border-radius:8px;padding:9px 12px;font-size:14px;box-shadow: inset 0 0 0 1px #d0d0d0;}
+  .body{flex:1;min-height:360px;border:none;outline:none;background:#fff;border-radius:8px;padding:10px 12px;font-size:14px;line-height:1.4;box-shadow: inset 0 0 0 1px #d0d0d0;resize:vertical;}
+  .hint{font-size:11px;color:#80868b;}
 </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="row">
+    <div class="row" style="flex-direction:column;align-items:stretch;">
+      <div class="label">Title</div>
       <input id="title" class="title" type="text" spellcheck="false" autocomplete="off" placeholder="Enter task title" value="%s"/>
+    </div>
+    <div class="row" style="gap:10px;">
+      <div style="display:flex;flex-direction:column;flex:1;">
+        <div class="label">Project</div>
+        <select id="project" class="project">%s</select>
+      </div>
+    </div>
+    <div class="row" style="flex-direction:column;align-items:stretch;flex:1;">
+      <div class="label">Selection</div>
+      <textarea id="body" class="body" spellcheck="false">%s</textarea>
+      <div class="hint">Enter to submit (when in Title). Cmd+Enter always submits. Esc cancels.</div>
     </div>
   </div>
   <script>
     const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ofPrompt;
     function send(event, payload){ if(handler){ handler.postMessage(Object.assign({event}, payload||{})); } }
     const input = document.getElementById('title');
+    const body = document.getElementById('body');
+    const project = document.getElementById('project');
     setTimeout(()=>{ input.focus(); input.select(); }, 0);
     document.addEventListener('keydown', (e)=>{
-      if(e.key === 'Enter'){ send('submit', { title: input.value }); }
+      if((e.metaKey || e.ctrlKey) && e.key === 'Enter'){
+        send('submit', { title: input.value, body: body.value, project: project.value });
+      } else if(e.key === 'Enter' && document.activeElement === input){
+        send('submit', { title: input.value, body: body.value, project: project.value });
+      }
       if(e.key === 'Escape'){ send('cancel', {}); }
     });
   </script>
 </body>
 </html>]]
 
-	local w = hs.webview
-		.new(rect, { developerExtrasEnabled = false }, uc)
+    local w = hs.webview
+        .new(rect, { developerExtrasEnabled = false }, uc)
 		:shadow(true)
 		:level(hs.drawing.windowLevels.modalPanel)
 		:windowStyle({ "utility" })
 		:allowTextEntry(true)
-		:html(string.format(html, htmlEscape(defaultTitle or "")))
+        :html(string.format(html, htmlEscape(defaultTitle or ""), optionsHTML, htmlEscape(defaultBody or "")))
 
 	w:show()
 	w:bringToFront(true)
@@ -157,10 +238,10 @@ local function showTitlePrompt(defaultTitle, onSubmit, onCancel)
 		w:delete()
 	end
 	-- wrap submit/cancel to close the prompt
-	local function submit(title)
-		close()
-		onSubmit(title)
-	end
+    local function submit(title, body, project)
+        close()
+        onSubmit(title, body, project)
+    end
 	local function cancel()
 		close()
 		if onCancel then
@@ -168,23 +249,25 @@ local function showTitlePrompt(defaultTitle, onSubmit, onCancel)
 		end
 	end
 
-	-- rebind callbacks with close behavior
-	uc:setCallback(function(msg)
-		if not msg or not msg.body then
-			return
-		end
-		local event = msg.body.event
-		if event == "submit" then
-			local title = trim((msg.body.title or ""))
-			if title ~= "" then
-				submit(title)
-			else
-				cancel()
-			end
-		elseif event == "cancel" then
-			cancel()
-		end
-	end)
+    -- rebind callbacks with close behavior
+    uc:setCallback(function(msg)
+        if not msg or not msg.body then
+            return
+        end
+        local event = msg.body.event
+        if event == "submit" then
+            local title = trim((msg.body.title or ""))
+            local body = msg.body.body or ""
+            local project = msg.body.project or "Inbox"
+            if title ~= "" then
+                submit(title, body, project)
+            else
+                cancel()
+            end
+        elseif event == "cancel" then
+            cancel()
+        end
+    end)
 end
 
 function of.captureSelection()
@@ -234,27 +317,35 @@ function of.captureSelection()
 	set delim to ASCII character 31 -- unit separator to avoid collisions
 	tell application "Mail"
 		try
-			set sel to selection
-			if sel is not {} then
-				set theMsg to item 1 of sel
-				set theID to message id of theMsg
-				if theID is missing value then return ""
-				set theSubject to subject of theMsg
-				set theSender to sender of theMsg
-				set theDate to date received of theMsg
-				set idText to theID as text
-				set idText to my replaceText("\n", "", idText)
-				set idText to my replaceText("\r", "", idText)
-				-- Ensure angle brackets are present before encoding
-				if idText is not "" and (text 1 of idText) is not "<" then set idText to "<" & idText & ">"
-				-- Percent-encode only angle brackets for Mail message URLs
-				set idEnc to my replaceText("<", "%3C", idText)
-				set idEnc to my replaceText(">", "%3E", idEnc)
-				set linkText to "message://" & idEnc
-				return theSubject & delim & theSender & delim & (theDate as string) & delim & linkText
-			else
-				return ""
+			set theMsg to missing value
+			-- First try the generic selection API
+			try
+				set sel to selection
+				if sel is not {} then set theMsg to item 1 of sel
+			end try
+			-- If no message yet, try the front message viewer's selected messages
+			if theMsg is missing value then
+				try
+					set selMsgs to selected messages of front message viewer
+					if selMsgs is not {} then set theMsg to item 1 of selMsgs
+				end try
 			end if
+			if theMsg is missing value then return ""
+			set theID to message id of theMsg
+			if theID is missing value then return ""
+			set theSubject to subject of theMsg
+			set theSender to sender of theMsg
+			set theDate to date received of theMsg
+			set idText to theID as text
+			set idText to my replaceText("\n", "", idText)
+			set idText to my replaceText("\r", "", idText)
+			-- Ensure angle brackets are present before encoding
+			if idText is not "" and (text 1 of idText) is not "<" then set idText to "<" & idText & ">"
+			-- Percent-encode only angle brackets for Mail message URLs
+			set idEnc to my replaceText("<", "%3C", idText)
+			set idEnc to my replaceText(">", "%3E", idEnc)
+			set linkText to "message://" & idEnc
+			return theSubject & delim & theSender & delim & (theDate as string) & delim & linkText
 		on error
 			return ""
 		end try
@@ -315,14 +406,20 @@ function of.captureSelection()
 		end
 	end
 
-	local note = table.concat(noteLines, "\n")
+	local noteHeader = table.concat(noteLines, "\n")
 
-	-- Minimal custom prompt without subtext or app icon
-	showTitlePrompt(selection, function(title)
-		createOmniFocusTask(title, note)
-	end, function()
-		-- canceled
-	end)
+	-- Prefill the editor with exactly what will be saved as the task note
+	local initialNote = noteHeader
+	if selection ~= "" then
+		initialNote = noteHeader .. "\n\n" .. selection
+	end
+
+    -- Fetch project names and show prompt with project selector
+    local projects = getOmniFocusProjectNames()
+    -- Prompt with title + editable note content; save exactly what user sees
+    showCapturePrompt("", initialNote, projects, "Inbox", function(title, edited, project)
+        createOmniFocusTask(title, edited or "", project)
+    end, function() end)
 end
 
 return of
