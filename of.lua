@@ -21,6 +21,172 @@ local function applescript(script)
 	return ok, result, err
 end
 
+local function ellipsize(s, max)
+	s = s or ""
+	if #s <= max then
+		return s
+	end
+	return s:sub(1, math.max(0, max - 1)) .. "…"
+end
+
+local function firstLine(s)
+	s = s or ""
+	local line = s:match("([^\r\n]*)") or ""
+	return line
+end
+
+local function createOmniFocusTask(title, note)
+	local script = string.format(
+		[[set theTaskName to "%s"
+set theNote to "%s"
+tell application "OmniFocus"
+	tell default document
+		make new inbox task with properties {name:theTaskName, note:theNote}
+	end tell
+end tell]],
+		encodeAppleScriptString(title),
+		encodeAppleScriptString(note)
+	)
+
+	local ok, _, err = hs.osascript.applescript(script)
+	if not ok then
+		hs.alert.show("Failed to add to OmniFocus: " .. tostring(err))
+		return
+	end
+
+	hs.alert.show("Captured to OmniFocus")
+end
+
+-- Minimal inline prompt without chooser hotkey hints
+local function htmlEscape(s)
+	s = s or ""
+	s = s:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub('"', "&quot;"):gsub("'", "&#39;")
+	return s
+end
+
+local function showTitlePrompt(defaultTitle, onSubmit, onCancel)
+	local screen = hs.screen.mainScreen():frame()
+	local width, height = 680, 72
+	local rect = {
+		x = screen.x + (screen.w - width) / 2,
+		y = screen.y + (screen.h - height) / 3,
+		w = width,
+		h = height,
+	}
+
+	local uc = hs.webview.usercontent.new("ofPrompt")
+	uc:setCallback(function(msg)
+		if not msg or not msg.body then
+			return
+		end
+		local event = msg.body.event
+		if event == "submit" then
+			local title = trim((msg.body.title or ""))
+			if title ~= "" then
+				onSubmit(title)
+			end
+		elseif event == "cancel" then
+			if onCancel then
+				onCancel()
+			end
+		end
+	end)
+
+	local html = [[
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  html,body{margin:0;padding:0;background:#ededed;color:#111;font:16px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;}
+  .wrap{display:flex;flex-direction:column;gap:8px;padding:12px 16px;}
+  .row{display:flex;align-items:center;}
+  .title{flex:1;border:none;outline:none;background:#fff;border-radius:8px;padding:10px 12px;font-size:22px;font-weight:600;box-shadow: inset 0 0 0 1px #d0d0d0;}
+  .title::placeholder{color:#9aa0a6;font-weight:500;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="row">
+      <input id="title" class="title" type="text" spellcheck="false" autocomplete="off" placeholder="Enter task title" value="%s"/>
+    </div>
+  </div>
+  <script>
+    const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ofPrompt;
+    function send(event, payload){ if(handler){ handler.postMessage(Object.assign({event}, payload||{})); } }
+    const input = document.getElementById('title');
+    setTimeout(()=>{ input.focus(); input.select(); }, 0);
+    document.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter'){ send('submit', { title: input.value }); }
+      if(e.key === 'Escape'){ send('cancel', {}); }
+    });
+  </script>
+</body>
+</html>]]
+
+	local w = hs.webview
+		.new(rect, { developerExtrasEnabled = false }, uc)
+		:shadow(true)
+		:level(hs.drawing.windowLevels.modalPanel)
+		:windowStyle({ "utility" })
+		:allowTextEntry(true)
+		:html(string.format(html, htmlEscape(defaultTitle or "")))
+
+	w:show()
+	w:bringToFront(true)
+	local hw = w:hswindow()
+	if hw then
+		hw:focus()
+	end
+	-- extra nudge after presentation to ensure keyboard focus
+	hs.timer.doAfter(0.05, function()
+		w:bringToFront(true)
+		local h2 = w:hswindow()
+		if h2 then
+			h2:focus()
+		end
+		w:evaluateJavaScript("(function(){var i=document.getElementById('title'); if(i){ i.focus(); i.select(); }})();")
+	end)
+
+	local closed = false
+	local function close()
+		if closed then
+			return
+		end
+		closed = true
+		w:delete()
+	end
+	-- wrap submit/cancel to close the prompt
+	local function submit(title)
+		close()
+		onSubmit(title)
+	end
+	local function cancel()
+		close()
+		if onCancel then
+			onCancel()
+		end
+	end
+
+	-- rebind callbacks with close behavior
+	uc:setCallback(function(msg)
+		if not msg or not msg.body then
+			return
+		end
+		local event = msg.body.event
+		if event == "submit" then
+			local title = trim((msg.body.title or ""))
+			if title ~= "" then
+				submit(title)
+			else
+				cancel()
+			end
+		elseif event == "cancel" then
+			cancel()
+		end
+	end)
+end
+
 function of.captureSelection()
 	-- Copy current selection without clobbering clipboard permanently
 	local pb = hs.pasteboard
@@ -151,26 +317,12 @@ function of.captureSelection()
 
 	local note = table.concat(noteLines, "\n")
 
-	-- Create OmniFocus inbox task via AppleScript to avoid URL encoding hassles
-	local script = string.format(
-		[[set theTaskName to "%s"
-set theNote to "%s"
-tell application "OmniFocus"
-	tell default document
-		make new inbox task with properties {name:theTaskName, note:theNote}
-	end tell
-end tell]],
-		encodeAppleScriptString(selection),
-		encodeAppleScriptString(note)
-	)
-
-	local ok, _, err = hs.osascript.applescript(script)
-	if not ok then
-		hs.alert.show("Failed to add to OmniFocus: " .. tostring(err))
-		return
-	end
-
-	hs.alert.show("Captured to OmniFocus")
+	-- Minimal custom prompt without subtext or app icon
+	showTitlePrompt(selection, function(title)
+		createOmniFocusTask(title, note)
+	end, function()
+		-- canceled
+	end)
 end
 
 return of
