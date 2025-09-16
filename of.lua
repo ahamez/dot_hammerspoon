@@ -3,22 +3,22 @@
 local of = {}
 
 local function trim(s)
-	return s and (s:gsub("^%s+", ""):gsub("%s+$", "")) or s
+    return s and (s:gsub("^%s+", ""):gsub("%s+$", "")) or s
 end
 
 local function encodeAppleScriptString(s)
-	if not s then
-		return ""
-	end
-	-- Escape backslashes and quotes for embedding into AppleScript string literals
-	s = s:gsub("\\", "\\\\"):gsub('"', '\\"')
-	-- AppleScript can handle newlines in quoted strings
-	return s
+    if not s then
+        return ""
+    end
+    -- Escape backslashes and quotes for embedding into AppleScript string literals
+    s = s:gsub("\\", "\\\\"):gsub('"', '\\"')
+    -- AppleScript can handle newlines in quoted strings
+    return s
 end
 
 local function applescript(script)
-	local ok, result, err = hs.osascript.applescript(script)
-	return ok, result, err
+    local ok, result, err = hs.osascript.applescript(script)
+    return ok, result, err
 end
 
 local function createOmniFocusTask(title, note, projectName)
@@ -27,7 +27,8 @@ local function createOmniFocusTask(title, note, projectName)
     local script
     if projectName and projectName ~= "" and projectName ~= "Inbox" then
         local projEsc = encodeAppleScriptString(projectName)
-        script = string.format([[set theTaskName to "%s"
+        script = string.format(
+            [[set theTaskName to "%s"
 set theNote to "%s"
 set theProjectName to "%s"
 tell application "OmniFocus"
@@ -40,15 +41,23 @@ tell application "OmniFocus"
             set theTask to make new inbox task with properties {name:theTaskName, note:theNote}
         end try
     end tell
-end tell]], titleEsc, noteEsc, projEsc)
+end tell]],
+            titleEsc,
+            noteEsc,
+            projEsc
+        )
     else
-        script = string.format([[set theTaskName to "%s"
+        script = string.format(
+            [[set theTaskName to "%s"
 set theNote to "%s"
 tell application "OmniFocus"
     tell default document
         make new inbox task with properties {name:theTaskName, note:theNote}
     end tell
-end tell]], titleEsc, noteEsc)
+end tell]],
+            titleEsc,
+            noteEsc
+        )
     end
 
     local ok, _, err = hs.osascript.applescript(script)
@@ -62,25 +71,30 @@ end
 
 -- Minimal inline prompt without chooser hotkey hints
 local function htmlEscape(s)
-	s = s or ""
-	s = s:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub('"', "&quot;"):gsub("'", "&#39;")
-	return s
+    s = s or ""
+    s = s:gsub("&", "&amp;")
+        :gsub("<", "&lt;")
+        :gsub(">", "&gt;")
+        :gsub('"', "&quot;")
+        :gsub("'", "&#39;")
+    return s
 end
 
 local function showCapturePrompt(defaultTitle, defaultBody, onSubmit, onCancel)
     local screen = hs.screen.mainScreen():frame()
     local width, height = 720, 520
-	local rect = {
-		x = screen.x + (screen.w - width) / 2,
-		y = screen.y + (screen.h - height) / 4,
-		w = width,
-		h = height,
-	}
+    local rect = {
+        x = screen.x + (screen.w - width) / 2,
+        y = screen.y + (screen.h - height) / 4,
+        w = width,
+        h = height,
+    }
 
-	local uc = hs.webview.usercontent.new("ofPrompt")
+    local uc = hs.webview.usercontent.new("ofPrompt")
 
     -- Load HTML template from file and substitute placeholders
-    local templatePath = (hs and hs.configdir or (os.getenv("HOME") .. "/.hammerspoon")) .. "/of_prompt.html"
+    local templatePath = (hs and hs.configdir or (os.getenv("HOME") .. "/.hammerspoon"))
+        .. "/of_prompt.html"
     local fh = io.open(templatePath, "r")
     local html = nil
     if fh then
@@ -93,50 +107,53 @@ local function showCapturePrompt(defaultTitle, defaultBody, onSubmit, onCancel)
 
     local w = hs.webview
         .new(rect, { developerExtrasEnabled = false }, uc)
-		:shadow(true)
-		:level(hs.drawing.windowLevels.modalPanel)
-		:windowStyle({ "utility" })
-		:allowTextEntry(true)
-        :html((html
-            :gsub("{{TITLE}}", function() return htmlEscape(defaultTitle or "") end)
-            :gsub("{{BODY}}", function() return htmlEscape(defaultBody or "") end)
-        ))
+        :shadow(true)
+        :level(hs.drawing.windowLevels.modalPanel)
+        :windowStyle({ "utility" })
+        :allowTextEntry(true)
+        :html((html:gsub("{{TITLE}}", function()
+            return htmlEscape(defaultTitle or "")
+        end):gsub("{{BODY}}", function()
+            return htmlEscape(defaultBody or "")
+        end)))
 
-	w:show()
-	w:bringToFront(true)
-	local hw = w:hswindow()
-	if hw then
-		hw:focus()
-	end
-	-- extra nudge after presentation to ensure keyboard focus
-	hs.timer.doAfter(0.05, function()
-		w:bringToFront(true)
-		local h2 = w:hswindow()
-		if h2 then
-			h2:focus()
-		end
-		w:evaluateJavaScript("(function(){var i=document.getElementById('title'); if(i){ i.focus(); i.select(); }})();")
-	end)
+    w:show()
+    w:bringToFront(true)
+    local hw = w:hswindow()
+    if hw then
+        hw:focus()
+    end
+    -- extra nudge after presentation to ensure keyboard focus
+    hs.timer.doAfter(0.05, function()
+        w:bringToFront(true)
+        local h2 = w:hswindow()
+        if h2 then
+            h2:focus()
+        end
+        w:evaluateJavaScript(
+            "(function(){var i=document.getElementById('title'); if(i){ i.focus(); i.select(); }})();"
+        )
+    end)
 
-	local closed = false
-	local function close()
-		if closed then
-			return
-		end
-		closed = true
-		w:delete()
-	end
-	-- wrap submit/cancel to close the prompt
+    local closed = false
+    local function close()
+        if closed then
+            return
+        end
+        closed = true
+        w:delete()
+    end
+    -- wrap submit/cancel to close the prompt
     local function submit(title, body)
         close()
         onSubmit(title, body)
     end
-	local function cancel()
-		close()
-		if onCancel then
-			onCancel()
-		end
-	end
+    local function cancel()
+        close()
+        if onCancel then
+            onCancel()
+        end
+    end
 
     -- rebind callbacks with close behavior
     uc:setCallback(function(msg)
@@ -159,39 +176,39 @@ local function showCapturePrompt(defaultTitle, defaultBody, onSubmit, onCancel)
 end
 
 function of.captureSelection()
-	-- Copy current selection without clobbering clipboard permanently
-	local pb = hs.pasteboard
-	local oldChange = pb.changeCount()
-	local oldContents = pb.getContents()
+    -- Copy current selection without clobbering clipboard permanently
+    local pb = hs.pasteboard
+    local oldChange = pb.changeCount()
+    local oldContents = pb.getContents()
 
-	-- Send Cmd+C to copy selection
-	hs.eventtap.keyStroke({ "cmd" }, "c", 0)
+    -- Send Cmd+C to copy selection
+    hs.eventtap.keyStroke({ "cmd" }, "c", 0)
 
-	-- Wait briefly for pasteboard to update
-	local deadline = hs.timer.absoluteTime() + 1e9 -- ~1s in ns
-	while pb.changeCount() == oldChange and hs.timer.absoluteTime() < deadline do
-		hs.timer.usleep(30000) -- 30ms
-	end
+    -- Wait briefly for pasteboard to update
+    local deadline = hs.timer.absoluteTime() + 1e9 -- ~1s in ns
+    while pb.changeCount() == oldChange and hs.timer.absoluteTime() < deadline do
+        hs.timer.usleep(30000) -- 30ms
+    end
 
-	local copyChanged = (pb.changeCount() ~= oldChange)
-	local selection = pb.getContents()
-	-- Restore previous clipboard
-	if oldContents then
-		pb.setContents(oldContents)
-	else
-		pb.clearContents()
-	end
+    local copyChanged = (pb.changeCount() ~= oldChange)
+    local selection = pb.getContents()
+    -- Restore previous clipboard
+    if oldContents then
+        pb.setContents(oldContents)
+    else
+        pb.clearContents()
+    end
 
-	selection = trim(selection or "")
+    selection = trim(selection or "")
 
-	local frontApp = hs.application.frontmostApplication()
-	local appName = frontApp and frontApp:name() or "Unknown App"
-	local appLower = appName:lower()
+    local frontApp = hs.application.frontmostApplication()
+    local appName = frontApp and frontApp:name() or "Unknown App"
+    local appLower = appName:lower()
 
-	-- If in Mail and no text selection or copy didn't change clipboard, fall back to message subject
-	local mailInfo = nil
-	if appLower == "mail" or appLower:find("mail", 1, true) then
-		local ok, result = applescript([[on replaceText(find, replace, subjectText)
+    -- If in Mail and no text selection or copy didn't change clipboard, fall back to message subject
+    local mailInfo = nil
+    if appLower == "mail" or appLower:find("mail", 1, true) then
+        local ok, result = applescript([[on replaceText(find, replace, subjectText)
 		repeat while subjectText contains find
 			set AppleScript's text item delimiters to find
 			set subjectText to text items of subjectText
@@ -238,69 +255,75 @@ function of.captureSelection()
 			return ""
 		end try
 	end tell]])
-		if ok and type(result) == "string" and result ~= "" then
-			local US = string.char(31)
-			local subj, sender, dateStr, link = result:match("^(.-)" .. US .. "(.-)" .. US .. "(.-)" .. US .. "(.*)$")
-			mailInfo = { subject = subj or "", sender = sender or "", date = dateStr or "", link = link or "" }
-			if (selection == "" or not copyChanged) and mailInfo.subject ~= "" then
-				selection = mailInfo.subject
-			end
-		end
-	end
+        if ok and type(result) == "string" and result ~= "" then
+            local US = string.char(31)
+            local subj, sender, dateStr, link =
+                result:match("^(.-)" .. US .. "(.-)" .. US .. "(.-)" .. US .. "(.*)$")
+            mailInfo = {
+                subject = subj or "",
+                sender = sender or "",
+                date = dateStr or "",
+                link = link or "",
+            }
+            if (selection == "" or not copyChanged) and mailInfo.subject ~= "" then
+                selection = mailInfo.subject
+            end
+        end
+    end
 
-	if selection == "" then
-		hs.alert.show("No selected text to capture")
-		return
-	end
+    if selection == "" then
+        hs.alert.show("No selected text to capture")
+        return
+    end
 
-	local noteLines = { "From: " .. appName }
-	if appLower:find("safari", 1, true) then
-		local ok, result = applescript([[tell application "Safari"
+    local noteLines = { "From: " .. appName }
+    if appLower:find("safari", 1, true) then
+        local ok, result = applescript([[tell application "Safari"
 			if (count of windows) is 0 then return ""
 			set theTab to current tab of front window
 			set theURL to URL of theTab
 			return theURL
 		end tell]])
-		if ok and result and result ~= "" then
-			table.insert(noteLines, "Link: " .. tostring(result))
-		end
-	elseif appLower:find("chrome", 1, true) then
-		-- Works for Google Chrome / Canary / Chromium by telling the exact front app name
-		local script = string.format(
-			[[tell application "%s"
+        if ok and result and result ~= "" then
+            table.insert(noteLines, "Link: " .. tostring(result))
+        end
+    elseif appLower:find("chrome", 1, true) then
+        -- Works for Google Chrome / Canary / Chromium by telling the exact front app name
+        local script = string.format(
+            [[tell application "%s"
 			if (count of windows) is 0 then return ""
 			set theTab to active tab of front window
 			set theURL to URL of theTab
 			return theURL
 		end tell]],
-			appName
-		)
-		local ok, result = applescript(script)
-		if ok and result and result ~= "" then
-			table.insert(noteLines, "Link: " .. tostring(result))
-		end
-	elseif appLower == "mail" or appLower:find("mail", 1, true) then
-		if mailInfo and mailInfo.subject ~= "" then
-			table.insert(noteLines, "Mail: " .. mailInfo.subject)
-			if mailInfo.sender ~= "" then
-				table.insert(noteLines, "Sender: " .. mailInfo.sender)
-			end
-			if mailInfo.date ~= "" then
-				table.insert(noteLines, "Date: " .. mailInfo.date)
-			end
-			if mailInfo.link ~= "" then
-				table.insert(noteLines, "Link: " .. mailInfo.link)
-			end
-		end
-	end
+            appName
+        )
+        local ok, result = applescript(script)
+        if ok and result and result ~= "" then
+            table.insert(noteLines, "Link: " .. tostring(result))
+        end
+    elseif appLower == "mail" or appLower:find("mail", 1, true) then
+        if mailInfo and mailInfo.subject ~= "" then
+            table.insert(noteLines, "Mail: " .. mailInfo.subject)
+            if mailInfo.sender ~= "" then
+                table.insert(noteLines, "Sender: " .. mailInfo.sender)
+            end
+            if mailInfo.date ~= "" then
+                table.insert(noteLines, "Date: " .. mailInfo.date)
+            end
+            if mailInfo.link ~= "" then
+                table.insert(noteLines, "Link: " .. mailInfo.link)
+            end
+        end
+    end
 
-	local noteHeader = table.concat(noteLines, "\n")
+    local noteHeader = table.concat(noteLines, "\n")
 
-	-- Prefill the editor with exactly what will be saved as the task note
-	local initialNote = noteHeader
-	if selection ~= "" then
-		initialNote = noteHeader .. "\n\n" .. selection
-	end
+    -- Prefill the editor with exactly what will be saved as the task note
+    local initialNote = noteHeader
+    if selection ~= "" then
+        initialNote = noteHeader .. "\n\n" .. selection
+    end
 
     -- Prompt with title + editable note content; save exactly what user sees
     showCapturePrompt("", initialNote, function(title, edited)
