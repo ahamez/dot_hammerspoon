@@ -1,38 +1,38 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `init.lua` — Entry point. Loads `zk`, sets URL handlers, watches this folder for reloads, and wires hotkeys. Requires `wm` and calls `wm.start()`.
-- `wm.lua` — Window manager module exporting `wm.start()`, `wm.modal`, `wm.centerCompact()`, `wm.moveToLeftScreen()`, and `wm.moveToRightScreen()`.
-- `zk.lua` — Zettelkasten helpers and URL actions (e.g., `zk-capture`, `zk-random`).
-- `Spoons/` — Optional Hammerspoon Spoons.
-- `zk_config.json` — Configuration for `zk`.
-- `.luarc.json` — Lua 5.4 settings and Hammerspoon libs in workspace.
+
+- `init.lua` boots the config, loads `zk`, assigns URL handlers, and starts the window manager via `wm.start()`.
+- `wm.lua` exports layout helpers (`wm.modal`, `wm.centerCompact()`, `wm.moveToLeftScreen()`, `wm.moveToRightScreen()`).
+- `zk.lua` defines Zettelkasten URL actions such as `zk-capture` and `zk-random`; configuration lives in `zk_config.json`.
+- `Spoons/` may host optional Hammerspoon Spoons; `.luarc.json` wires Lua 5.4 and Hammerspoon globals for tooling.
 
 ## Build, Test, and Development Commands
-- Reload config: use the bound hotkey `cmd+alt+ctrl+r` or Hammerspoon Console: `hs.reload()`.
-- Open Console: Hammerspoon menu → Console; inspect logs and run Lua snippets.
-- Trigger URL handlers (examples):
-  - `open "hammerspoon://zk-random?searchAll=true"`
-  - `open "hammerspoon://zk-capture?text=Hello"`
+
+- Reload after edits with the hotkey `cmd+alt+ctrl+r` or run `hs.reload()` in the Hammerspoon Console.
+- Trigger URL handlers from the terminal, e.g. `open "hammerspoon://zk-random?searchAll=true"` or `open "hammerspoon://zk-capture?text=Hello"` to validate `zk` paths.
+- Use the Console (Hammerspoon menu → Console) to inspect logs or execute Lua snippets such as `hs.window.focusedWindow():frame()`.
 
 ## Coding Style & Naming Conventions
-- Language: Lua 5.4; prefer `local` for variables and functions.
-- Modules return a table (e.g., `wm`); functions use lowerCamelCase.
-- Indentation: match surrounding file (tabs currently). Keep line length reasonable (~100 cols).
-- Avoid globals except `hs`. Respect Hammerspoon API idioms and non-blocking UI.
+
+- Lua 5.4; prefer `local` scope and lowerCamelCase function names within modules that return a table.
+- Match the existing space-based indentation and keep lines within ~100 characters.
+- Respect Hammerspoon idioms—avoid blocking UI calls and keep modules free of global state beyond `hs`.
 
 ## Testing Guidelines
-- No automated tests. Use manual checks:
-  - Modal: `cmd+alt+ctrl+x` enters; `c/b/f/v` apply layout and exit; `h/j/k/l` resize and remain in modal; `Esc` exits.
-  - Global hotkeys: `cmd+alt+ctrl+c` centers without resizing; `cmd+alt+ctrl+Left/Right` moves to adjacent screen.
-  - URL routes: try the `open` examples above and validate expected `zk` behavior.
-- Use the Console for quick assertions (e.g., `hs.window.focusedWindow():frame()`).
+
+- No automated suite; rely on manual checks.
+- Enter the modal with `cmd+alt+ctrl+x`; verify `c/b/f/v` apply layouts and exit, `h/j/k/l` resize while staying active, and `Esc` exits.
+- Validate global hotkeys: `cmd+alt+ctrl+c` recenters the focused window, arrow bindings move it between screens.
+- Confirm URL routes using the `open` commands above and review results in the Console.
 
 ## Commit & Pull Request Guidelines
-- Commits: small, focused, imperative style (e.g., "Extract wm into module"). Reference files and hotkeys touched.
-- PRs: include a short summary, before/after notes for behavior, reproduction steps, and any screenshots/recordings if UI changes (alerts/hints).
-- Link related issues and call out breaking or binding changes.
+
+- Write small, imperative commits (e.g., "Extract wm into module") and reference modules or bindings touched.
+- Pull requests should summarize behavior changes, note before/after effects, include reproduction steps, and link related issues.
+- Add console captures or screenshots when altering alerts or on-screen hints.
 
 ## Security & Configuration Tips
-- Do not commit personal paths or secrets in `zk_config.json`.
-- This repo auto-reloads on `.lua` or `zk_config.json` changes; avoid noisy file writes that could cause rapid reloads.
+
+- Keep personal paths or secrets out of `zk_config.json`; the repository auto-reloads on `.lua` or config changes, so avoid noisy writes.
+- Treat Spoons and external dependencies as optional; document any new requirements in the PR description.
