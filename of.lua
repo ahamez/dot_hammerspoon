@@ -207,7 +207,9 @@ function of.captureSelection()
 
     -- If in Mail and no text selection or copy didn't change clipboard, fall back to message subject
     local mailInfo = nil
+    local defaultTitle = ""
     if appLower == "mail" or appLower:find("mail", 1, true) then
+        defaultTitle = "Follow-up:"
         local ok, result = applescript([[on replaceText(find, replace, subjectText)
 		repeat while subjectText contains find
 			set AppleScript's text item delimiters to find
@@ -268,6 +270,10 @@ function of.captureSelection()
             if (selection == "" or not copyChanged) and mailInfo.subject ~= "" then
                 selection = mailInfo.subject
             end
+            local subjectForTitle = trim(mailInfo.subject or "")
+            if subjectForTitle ~= "" then
+                defaultTitle = "Follow-up: " .. subjectForTitle
+            end
         end
     end
 
@@ -326,7 +332,7 @@ function of.captureSelection()
     end
 
     -- Prompt with title + editable note content; save exactly what user sees
-    showCapturePrompt("", initialNote, function(title, edited)
+    showCapturePrompt(defaultTitle, initialNote, function(title, edited)
         createOmniFocusTask(title, edited or "")
     end, function() end)
 end
