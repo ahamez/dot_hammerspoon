@@ -213,24 +213,6 @@ local function openObsidianPath(relativePath)
     hs.urlevent.openURL(uri)
 end
 
--- Build a source context block.
-local function sourceContextBlock(opts)
-    local appName
-    local url, title
-    if type(opts) == "table" then
-        appName = opts.from
-        url = opts.url
-        title = opts.title
-    end
-    if not appName then
-        local app = hs.application.frontmostApplication()
-        appName = app and app:name() or "Unknown App"
-    end
-    local line1 = ("%s\n"):format(appName)
-    local line3 = (url and url ~= "") and ("Link: [%s](%s)\n"):format(title or url, url) or ""
-    return line1 .. line3
-end
-
 -- === Fleeting note path ===
 
 function zk.todayFleetingRelative()
@@ -368,12 +350,9 @@ local function randomNoteRelative(searchAll)
     return pool[math.random(#pool)]
 end
 
--- build a fleeting-note entry with time + context + body
-local function makeFleetingEntry(body, ctxOpts)
-    local stamp = os.date("%Y-%m-%d %H:%M")
-    local header = string.format("\n##### %s\n", stamp)
-    local ctx = sourceContextBlock(ctxOpts)
-    return string.format("%s%s\n%s\n\n---", header, ctx, body)
+-- build a fleeting-note entry with captured body as a bullet item
+local function makeFleetingEntry(body)
+    return string.format("\n- %s\n", body)
 end
 
 -- Actions
@@ -415,8 +394,7 @@ function zk.captureText(params)
         return
     end
     local full = pathJoin(zk.config.vaultPath, relative)
-    local fromParam = trim((params and (params["from"] or params["sender"])) or "URL capture")
-    local entry = makeFleetingEntry(text, { from = fromParam })
+    local entry = makeFleetingEntry(text)
     if appendFile(full, entry) then
         openObsidianPath(relative)
     end
@@ -466,7 +444,7 @@ function zk.captureScreenshot()
             return
         end
         local fullF = pathJoin(zk.config.vaultPath, relF)
-        if appendFile(fullF, makeFleetingEntry(body, { from = "Screenshot" })) then
+        if appendFile(fullF, makeFleetingEntry(body)) then
             openObsidianPath(relF)
         end
     end, { "-i", "-t", "png", outFull })
