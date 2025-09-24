@@ -47,6 +47,7 @@ wm.start()
 
 -- OmniFocus helpers
 local of = require("of")
+of.start()
 -- URL: trigger OmniFocus capture via hammerspoon://of-capture
 hs.urlevent.bind("of-capture", function()
     of.captureSelection()

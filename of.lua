@@ -21,6 +21,38 @@ local function applescript(script)
     return ok, result, err
 end
 
+local function isOmniFocusApp(app)
+    if not app then
+        return false
+    end
+    local bundleID = app:bundleID()
+    if bundleID and bundleID:match("^com%.omnigroup%.OmniFocus") then
+        return true
+    end
+    local name = app:name()
+    return name == "OmniFocus"
+end
+
+local toggleModal = hs.hotkey.modal.new()
+local appWatcher
+
+local toggleScript = [[tell application "OmniFocus"
+	if not (exists document 1) then return
+	tell document 1
+		if not (exists document window 1) then return
+		tell document window 1
+			set theContent to content
+			if theContent is missing value then return
+			set currentFilter to selected task state filter identifier of theContent
+			if currentFilter is "available" then
+				set selected task state filter identifier of theContent to "incomplete"
+			else
+				set selected task state filter identifier of theContent to "available"
+			end if
+		end tell
+	end tell
+end tell]]
+
 local function createOmniFocusTask(title, note, projectName)
     local titleEsc = encodeAppleScriptString(title)
     local noteEsc = encodeAppleScriptString(note)
@@ -335,6 +367,56 @@ function of.captureSelection()
     showCapturePrompt(defaultTitle, initialNote, function(title, edited)
         createOmniFocusTask(title, edited or "")
     end, function() end)
+end
+
+toggleModal:bind({ "alt" }, "a", function()
+    of.toggleAvailabilityFilter()
+end)
+
+function of.toggleAvailabilityFilter()
+    local frontApp = hs.application.frontmostApplication()
+    if not isOmniFocusApp(frontApp) then
+        return
+    end
+
+    local ok, _, err = hs.osascript.applescript(toggleScript)
+    if not ok then
+        hs.alert.show("OmniFocus toggle failed: " .. tostring(err))
+    end
+end
+
+function of.start()
+    local function syncModal()
+        if isOmniFocusApp(hs.application.frontmostApplication()) then
+            toggleModal:enter()
+        else
+            toggleModal:exit()
+        end
+    end
+
+    syncModal()
+
+    if appWatcher then
+        return
+    end
+
+    appWatcher = hs.application.watcher.new(function(appName, eventType, appObject)
+        local isOmniFocus = appName == "OmniFocus" or isOmniFocusApp(appObject)
+
+        if eventType == hs.application.watcher.activated then
+            if isOmniFocus then
+                toggleModal:enter()
+            else
+                toggleModal:exit()
+            end
+        elseif isOmniFocus and (eventType == hs.application.watcher.deactivated
+            or eventType == hs.application.watcher.terminated)
+        then
+            toggleModal:exit()
+        end
+    end)
+
+    appWatcher:start()
 end
 
 return of
