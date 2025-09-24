@@ -61,18 +61,6 @@ function zk.alertError(msg)
     hs.alert.show(tostring(msg))
 end
 
-function zk.notifyInfo(title, text)
-    pcall(function()
-        hs.notify
-            .new({
-                title = tostring(title or "Info"),
-                informativeText = tostring(text or ""),
-                autoWithdraw = true,
-            })
-            :send()
-    end)
-end
-
 function zk.toBool(v)
     if v == nil then
         return false

@@ -7,6 +7,18 @@ if not ok then
 end
 local zk = zk_or_err
 
+local function notifyInfo(title, text)
+    pcall(function()
+        hs.notify
+            .new({
+                title = tostring(title or "Info"),
+                informativeText = tostring(text or ""),
+                autoWithdraw = true,
+            })
+            :send()
+    end)
+end
+
 -- URL handlers
 hs.urlevent.bind("zk-capture", function(_, params)
     zk.captureText(params)
@@ -39,7 +51,7 @@ local function reloadConfig(files)
 end
 
 MyWatcher = hs.pathwatcher.new(os.getenv("HOME") .. "/.hammerspoon/", reloadConfig):start()
-zk.notifyInfo("Hammerspoon", "Config reloaded")
+notifyInfo("Hammerspoon", "Config reloaded")
 
 -- Window manager module
 local wm = require("wm")
@@ -70,9 +82,3 @@ end)
 hs.hotkey.bind({ "cmd", "alt", "ctrl" }, "right", function()
     wm.moveToRightScreen()
 end)
-
--- optional quick reload
-hs.hotkey.bind({ "cmd", "alt", "ctrl" }, "r", function()
-    hs.reload()
-end)
-hs.alert.show("Hammerspoon loaded", 0.4)
