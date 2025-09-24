@@ -17,8 +17,26 @@ local function encodeAppleScriptString(s)
 end
 
 local function applescript(script)
+    if not script or script == "" then
+        return false, nil, "missing script"
+    end
     local ok, result, err = hs.osascript.applescript(script)
     return ok, result, err
+end
+
+local function readAppleScript(filename)
+    local baseDir = (hs and hs.configdir) or (os.getenv("HOME") .. "/.hammerspoon")
+    local fullPath = baseDir .. "/apple_scripts/" .. filename
+
+    local fh = io.open(fullPath, "r")
+    if not fh then
+        hs.alert.show("Missing AppleScript: " .. filename)
+        return nil
+    end
+
+    local contents = fh:read("*a")
+    fh:close()
+    return contents
 end
 
 local function isOmniFocusApp(app)
@@ -36,63 +54,33 @@ end
 local toggleModal = hs.hotkey.modal.new()
 local appWatcher
 
-local toggleScript = [[tell application "OmniFocus"
-	if not (exists document 1) then return
-	tell document 1
-		if not (exists document window 1) then return
-		tell document window 1
-			set theContent to content
-			if theContent is missing value then return
-			set currentFilter to selected task state filter identifier of theContent
-			if currentFilter is "available" then
-				set selected task state filter identifier of theContent to "incomplete"
-			else
-				set selected task state filter identifier of theContent to "available"
-			end if
-		end tell
-	end tell
-end tell]]
+local toggleScript = readAppleScript("toggle_filter.applescript")
+local createWithProjectScript = readAppleScript("create_task_with_project.applescript")
+local createInboxScript = readAppleScript("create_inbox_task.applescript")
+local mailContextScript = readAppleScript("mail_context.applescript")
+local safariUrlScript = readAppleScript("safari_url.applescript")
+local browserUrlScript = readAppleScript("browser_url.applescript")
 
 local function createOmniFocusTask(title, note, projectName)
     local titleEsc = encodeAppleScriptString(title)
     local noteEsc = encodeAppleScriptString(note)
     local script
     if projectName and projectName ~= "" and projectName ~= "Inbox" then
+        if not createWithProjectScript then
+            hs.alert.show("Missing OmniFocus project AppleScript template")
+            return
+        end
         local projEsc = encodeAppleScriptString(projectName)
-        script = string.format(
-            [[set theTaskName to "%s"
-set theNote to "%s"
-set theProjectName to "%s"
-tell application "OmniFocus"
-    tell default document
-        set theTask to missing value
-        try
-            set theProj to first flattened project whose name is theProjectName
-            set theTask to make new task with properties {name:theTaskName, note:theNote} at end of tasks of theProj
-        on error
-            set theTask to make new inbox task with properties {name:theTaskName, note:theNote}
-        end try
-    end tell
-end tell]],
-            titleEsc,
-            noteEsc,
-            projEsc
-        )
+        script = string.format(createWithProjectScript, titleEsc, noteEsc, projEsc)
     else
-        script = string.format(
-            [[set theTaskName to "%s"
-set theNote to "%s"
-tell application "OmniFocus"
-    tell default document
-        make new inbox task with properties {name:theTaskName, note:theNote}
-    end tell
-end tell]],
-            titleEsc,
-            noteEsc
-        )
+        if not createInboxScript then
+            hs.alert.show("Missing OmniFocus inbox AppleScript template")
+            return
+        end
+        script = string.format(createInboxScript, titleEsc, noteEsc)
     end
 
-    local ok, _, err = hs.osascript.applescript(script)
+    local ok, _, err = applescript(script)
     if not ok then
         hs.alert.show("Failed to add to OmniFocus: " .. tostring(err))
         return
@@ -242,53 +230,7 @@ function of.captureSelection()
     local defaultTitle = ""
     if appLower == "mail" or appLower:find("mail", 1, true) then
         defaultTitle = "Follow-up:"
-        local ok, result = applescript([[on replaceText(find, replace, subjectText)
-		repeat while subjectText contains find
-			set AppleScript's text item delimiters to find
-			set subjectText to text items of subjectText
-			set AppleScript's text item delimiters to replace
-			set subjectText to subjectText as string
-		end repeat
-		set AppleScript's text item delimiters to ""
-		return subjectText
-	end replaceText
-
-	set delim to ASCII character 31 -- unit separator to avoid collisions
-	tell application "Mail"
-		try
-			set theMsg to missing value
-			-- First try the generic selection API
-			try
-				set sel to selection
-				if sel is not {} then set theMsg to item 1 of sel
-			end try
-			-- If no message yet, try the front message viewer's selected messages
-			if theMsg is missing value then
-				try
-					set selMsgs to selected messages of front message viewer
-					if selMsgs is not {} then set theMsg to item 1 of selMsgs
-				end try
-			end if
-			if theMsg is missing value then return ""
-			set theID to message id of theMsg
-			if theID is missing value then return ""
-			set theSubject to subject of theMsg
-			set theSender to sender of theMsg
-			set theDate to date received of theMsg
-			set idText to theID as text
-			set idText to my replaceText("\n", "", idText)
-			set idText to my replaceText("\r", "", idText)
-			-- Ensure angle brackets are present before encoding
-			if idText is not "" and (text 1 of idText) is not "<" then set idText to "<" & idText & ">"
-			-- Percent-encode only angle brackets for Mail message URLs
-			set idEnc to my replaceText("<", "%3C", idText)
-			set idEnc to my replaceText(">", "%3E", idEnc)
-			set linkText to "message://" & idEnc
-			return theSubject & delim & theSender & delim & (theDate as string) & delim & linkText
-		on error
-			return ""
-		end try
-	end tell]])
+        local ok, result = applescript(mailContextScript)
         if ok and type(result) == "string" and result ~= "" then
             local US = string.char(31)
             local subj, sender, dateStr, link =
@@ -316,29 +258,18 @@ function of.captureSelection()
 
     local noteLines = { "From: " .. appName }
     if appLower:find("safari", 1, true) then
-        local ok, result = applescript([[tell application "Safari"
-			if (count of windows) is 0 then return ""
-			set theTab to current tab of front window
-			set theURL to URL of theTab
-			return theURL
-		end tell]])
+        local ok, result = applescript(safariUrlScript)
         if ok and result and result ~= "" then
             table.insert(noteLines, "Link: " .. tostring(result))
         end
     elseif appLower:find("chrome", 1, true) then
         -- Works for Google Chrome / Canary / Chromium by telling the exact front app name
-        local script = string.format(
-            [[tell application "%s"
-			if (count of windows) is 0 then return ""
-			set theTab to active tab of front window
-			set theURL to URL of theTab
-			return theURL
-		end tell]],
-            appName
-        )
-        local ok, result = applescript(script)
-        if ok and result and result ~= "" then
-            table.insert(noteLines, "Link: " .. tostring(result))
+        if browserUrlScript then
+            local script = string.format(browserUrlScript, appName)
+            local ok, result = applescript(script)
+            if ok and result and result ~= "" then
+                table.insert(noteLines, "Link: " .. tostring(result))
+            end
         end
     elseif appLower == "mail" or appLower:find("mail", 1, true) then
         if mailInfo and mailInfo.subject ~= "" then
@@ -379,7 +310,7 @@ function of.toggleAvailabilityFilter()
         return
     end
 
-    local ok, _, err = hs.osascript.applescript(toggleScript)
+    local ok, _, err = applescript(toggleScript)
     if not ok then
         hs.alert.show("OmniFocus toggle failed: " .. tostring(err))
     end
